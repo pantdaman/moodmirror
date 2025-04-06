@@ -31,25 +31,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Create firebase.json file
-        run: |
-          echo '{
-            "hosting": {
-              "public": "dist",
-              "ignore": [
-                "firebase.json",
-                "**/.*",
-                "**/node_modules/**"
-              ],
-              "rewrites": [
-                {
-                  "source": "**",
-                  "destination": "/index.html"
-                }
-              ]
-            }
-          }' > firebase.json
-
       - name: Deploy to Firebase
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
