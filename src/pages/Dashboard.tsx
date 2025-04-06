@@ -7,10 +7,14 @@ import { useGeminiRecommendations } from '../hooks/useGeminiRecommendations';
 import { getRecommendationsByEmotion } from '../data/curatedRecommendations';
 import { EmotionType, Recommendation, EmotionData } from '../types';
 import { RecommendationCard } from '../components/RecommendationCard';
-import { Button, Container, Typography, Box, CircularProgress, Paper, Link, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Button, Container, Typography, Box, CircularProgress, Paper, Link, Dialog, DialogTitle, DialogContent, DialogActions, Collapse, useMediaQuery, useTheme } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { saveEmotionStats } from '../services/emotionStatsService';
 import EmotionStats from '../components/EmotionStats';
+import logo from '../assets/images/moodmirror-logo.svg';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import BarChartIcon from '@mui/icons-material/BarChart';
 
 // Styled components
 const EmotionContainer = styled(Paper)(({ theme }) => ({
@@ -20,17 +24,28 @@ const EmotionContainer = styled(Paper)(({ theme }) => ({
   boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
   backgroundColor: '#ffffff',
   border: '1px solid #e0e0e0',
+  '@media (prefers-color-scheme: dark)': {
+    backgroundColor: '#f0f2f5',
+    border: '1px solid #d0d0d0',
+    color: '#333333',
+  }
 }));
 
 const EmotionTitle = styled(Typography)(({ theme }) => ({
   color: '#4A4A4A',
   fontWeight: 600,
   marginBottom: theme.spacing(2),
+  '@media (prefers-color-scheme: dark)': {
+    color: '#333333',
+  }
 }));
 
 const EmotionDescription = styled(Typography)(({ theme }) => ({
   color: '#4A4A4A',
   marginBottom: theme.spacing(2),
+  '@media (prefers-color-scheme: dark)': {
+    color: '#555555',
+  }
 }));
 
 const EmotionIcon = styled(Box)(({ theme }) => ({
@@ -63,98 +78,54 @@ const emotionToEmoji: Record<EmotionType, string> = {
   neutral: '😐'
 };
 
-// Add a Logo component at the top of the Dashboard
-const Logo = () => (
-  <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-    <Box
-      sx={{
-        width: 40,
-        height: 40,
-        borderRadius: '50%',
-        backgroundColor: 'primary.main',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        mr: 2,
-        position: 'relative',
-        boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-      }}
-    >
-      {/* Eye shape */}
-      <Box
-        sx={{
-          width: 24,
-          height: 16,
-          borderRadius: '50%',
-          backgroundColor: 'white',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Pupil */}
-        <Box
-          sx={{
-            width: 8,
-            height: 8,
-            borderRadius: '50%',
-            backgroundColor: 'primary.dark',
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-          }}
-        />
-      </Box>
-      
-      {/* Emotion indicators */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: -2,
-          right: -2,
-          width: 12,
-          height: 12,
-          borderRadius: '50%',
-          backgroundColor: '#ff9800',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '8px',
-          color: 'white',
-        }}
-      >
-        😊
-      </Box>
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: -2,
-          left: -2,
-          width: 12,
-          height: 12,
-          borderRadius: '50%',
-          backgroundColor: '#f44336',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: '8px',
-          color: 'white',
-        }}
-      >
-        😢
-      </Box>
-    </Box>
-    <Typography variant="h5" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-      MoodMirror
-    </Typography>
-  </Box>
-);
+// Add encouraging messages for each emotion
+const emotionMessages: Record<EmotionType, string> = {
+  happy: "It's wonderful to feel happy! Enjoy this positive moment.",
+  sad: "It's okay to feel sad. Your emotions are valid and will pass.",
+  angry: "It's normal to feel angry sometimes. Take a deep breath and give yourself a moment.",
+  fearful: "It's okay to feel afraid. Remember that you are safe and this feeling will pass.",
+  disgusted: "It's okay to feel disgusted. Your body is telling you something important.",
+  surprised: "Surprise can be exciting! Embrace the unexpected.",
+  neutral: "A neutral mood is perfectly fine. It's a moment of balance."
+};
 
 // Add usage tracking constants
 const FREE_USAGE_LIMIT = 3;
 const USAGE_COUNT_KEY = 'moodMirror_usageCount';
 const LAST_USAGE_TIME_KEY = 'moodMirror_lastUsageTime';
 const USAGE_RESET_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
+
+// Add a styled button component
+const StyledButton = styled(Button)(({ theme }) => ({
+  borderRadius: '8px',
+  padding: '10px 20px',
+  fontWeight: 600,
+  textTransform: 'none',
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+  transition: 'all 0.2s ease-in-out',
+  '&:hover': {
+    transform: 'translateY(-2px)',
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.15)',
+  }
+}));
+
+// Add a styled emotion card component
+const EmotionCard = styled(Box)(({ theme }) => ({
+  backgroundColor: '#f8f9fa',
+  borderRadius: '12px',
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(2),
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)',
+  border: '1px solid #e0e0e0',
+  transition: 'all 0.2s ease-in-out',
+  '&:hover': {
+    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
+  },
+  '@media (prefers-color-scheme: dark)': {
+    backgroundColor: '#f0f2f5',
+    border: '1px solid #d0d0d0',
+  }
+}));
 
 // Add a PremiumDialog component
 const PremiumDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => (
@@ -201,6 +172,85 @@ const PremiumDialog = ({ open, onClose }: { open: boolean; onClose: () => void }
   </Dialog>
 );
 
+// Add a compact EmotionStats component
+const CompactEmotionStats = () => {
+  const [expanded, setExpanded] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  return (
+    <EmotionContainer sx={{ mb: 2 }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: expanded ? 2 : 0,
+        color: '#4A4A4A',
+        '@media (prefers-color-scheme: dark)': {
+          color: '#333333',
+        }
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Typography variant="h6" component="h2" sx={{
+            color: 'inherit',
+            '@media (prefers-color-scheme: dark)': {
+              color: '#333333',
+            }
+          }}>
+            📊 Emotion Statistics
+          </Typography>
+        </Box>
+        <Button 
+          onClick={() => setExpanded(!expanded)}
+          size="small"
+          sx={{ 
+            minWidth: 'auto', 
+            p: 1,
+            color: '#4A4A4A',
+            '@media (prefers-color-scheme: dark)': {
+              color: '#333333',
+            }
+          }}
+        >
+          {expanded ? '▼ Hide' : '▲ Show'}
+        </Button>
+      </Box>
+      
+      <Collapse in={expanded} timeout="auto" unmountOnExit>
+        <Box sx={{ 
+          maxHeight: isMobile ? '200px' : '300px', 
+          overflow: 'auto',
+          pr: 1,
+          color: '#4A4A4A',
+          '@media (prefers-color-scheme: dark)': {
+            color: '#333333',
+          }
+        }}>
+          <EmotionStats />
+        </Box>
+      </Collapse>
+    </EmotionContainer>
+  );
+};
+
+// Add emotion emojis for the logo decoration
+const emotionEmojis = ['😊', '😌', '😔', '😤', '😡', '😨', '😴'];
+
+// Add emojis for the MoodMirror text
+const moodEmojis = ['😊', '😌', '😔', '😤', '��', '😨', '😴'];
+
+// Function to calculate emoji positions in a circle around the logo
+const getEmojiPosition = (index: number, total: number) => {
+  const radius =35; // Distance from the center of the logo
+  const angle = (index / total) * 2 * Math.PI; // Distribute emojis evenly in a circle
+  
+  return {
+    left: `calc(50% + ${radius * Math.cos(angle)}px)`,
+    top: `calc(50% + ${radius * Math.sin(angle)}px)`,
+    transform: 'translate(-50%, -50%)',
+  };
+};
+
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [isCapturing, setIsCapturing] = useState(false);
@@ -229,6 +279,8 @@ const Dashboard: React.FC = () => {
     return savedTime ? parseInt(savedTime, 10) : 0;
   });
   const [canUseApp, setCanUseApp] = useState(true);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const { currentEmotion, isModelLoaded, isProcessing, error } = useEmotionDetection(
     videoRef,
@@ -446,17 +498,131 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Logo />
+    <Container maxWidth="lg" sx={{ 
+      py: 4,
+      color: '#4A4A4A',
+      backgroundColor: '#ffffff',
+      '@media (prefers-color-scheme: dark)': {
+        color: '#333333',
+        backgroundColor: '#e8eaed',
+      }
+    }}>
+      {/* Header with app name and usage count */}
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 3,
+        color: 'inherit'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Box sx={{ 
+            position: 'relative',
+            width: 80,
+            height: 80,
+            mr: 3,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            {/* Main logo - centered in the container */}
+            <Box
+              component="img"
+              src={logo}
+              alt="MoodMirror Logo"
+              sx={{
+                width: '90%',
+                height: '60%',
+                position: 'absolute',
+                top: '60%',
+                left: '70%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: 2,
+              }}
+            />
+            {/* Emotion emojis around the logo */}
+            {emotionEmojis.map((emoji, index) => (
+              <Box
+                key={index}
+                sx={{
+                  position: 'absolute',
+                  width: 28,
+                  height: 28,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '1.3rem',
+                  animation: `float ${3 + index * 0.5}s ease-in-out infinite`,
+                  animationDelay: `${index * 0.2}s`,
+                  ...getEmojiPosition(index, emotionEmojis.length),
+                }}
+              >
+                {emoji}
+              </Box>
+            ))}
+          </Box>
+          <Typography variant="h4" component="h1" sx={{ 
+            fontWeight: 'bold', 
+            color: '#3f51b5',
+            '@media (prefers-color-scheme: dark)': {
+              color: '#3f51b5',
+            }
+          }}>
+            MoodMirror
+          </Typography>
+        </Box>
+        <Box sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          justifyContent: 'center',
+        }}>
+          <Typography variant="body1" sx={{
+            color: '#666666',
+            fontWeight: 500,
+            '@media (prefers-color-scheme: dark)': {
+              color: '#555555',
+            }
+          }}>
+            {getTimeRemaining()}
+          </Typography>
+        </Box>
+      </Box>
       
-      {/* Add usage count indicator */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          {getTimeRemaining()}
+      {/* App description */}
+      <Box sx={{ 
+        textAlign: 'center', 
+        mb: 4,
+        maxWidth: '600px',
+        mx: 'auto',
+        color: '#666666',
+        '@media (prefers-color-scheme: dark)': {
+          color: '#555555',
+        }
+      }}>
+        <Typography variant="body2">
+          MoodMirror helps you track and understand your emotions through facial recognition. 
+          Capture your current mood and receive personalized recommendations to improve your emotional well-being.
         </Typography>
       </Box>
       
+      {/* Add keyframes for floating animation */}
+      <style>
+        {`
+          @keyframes float {
+            0%, 100% {
+              transform: translateY(0) rotate(0deg);
+            }
+            50% {
+              transform: translateY(-5px) rotate(5deg);
+            }
+          }
+        `}
+      </style>
+      
+      {/* Main content area with tabs for mobile */}
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+        {/* Left column - Camera and Emotion Detection */}
         <Box sx={{ flex: 1 }}>
           <EmotionContainer>
             <Box sx={{ textAlign: 'center', mb: 3 }}>
@@ -519,51 +685,129 @@ const Dashboard: React.FC = () => {
             
             <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 3 }}>
               {!isCapturing ? (
-                <Button
+                <StyledButton
                   variant="contained"
                   onClick={handleStartCapture}
                   disabled={!isModelLoaded || !canUseApp}
+                  sx={{ 
+                    backgroundColor: '#3f51b5',
+                    '&:hover': {
+                      backgroundColor: '#303f9f',
+                    },
+                    '&:disabled': {
+                      backgroundColor: 'rgba(63, 81, 181, 0.5)',
+                    }
+                  }}
                 >
                   {!canUseApp ? 'Usage Limit Reached' : isModelLoaded ? 'Start Capturing' : 'Loading Models...'}
-                </Button>
+                </StyledButton>
               ) : (
-                <Button
+                <StyledButton
                   variant="outlined"
                   onClick={handleStopCapture}
+                  sx={{ 
+                    color: '#3f51b5',
+                    borderColor: '#3f51b5',
+                    '&:hover': {
+                      borderColor: '#3f51b5',
+                      backgroundColor: 'rgba(63, 81, 181, 0.1)'
+                    }
+                  }}
                 >
                   Stop Capturing
-                </Button>
+                </StyledButton>
               )}
             </Box>
 
             {detectedEmotion && (
-              <Box sx={{ textAlign: 'center' }}>
-                <EmotionIcon>
-                  {emotionToEmoji[detectedEmotion]}
-                </EmotionIcon>
-                <EmotionTitle variant="h5">
-                  {detectedEmotion.charAt(0).toUpperCase() + detectedEmotion.slice(1)}
-                </EmotionTitle>
-                <EmotionDescription>
-                  {currentEmotion && `Confidence: ${(currentEmotion.confidence * 100).toFixed(1)}%`}
-                </EmotionDescription>
-                
-                {showConfirmButton && (
-                  <Button
-                    variant="contained"
-                    onClick={handleConfirmEmotion}
+              <EmotionCard>
+                <Box sx={{ 
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 1
+                }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: 2,
+                    mb: 1
+                  }}>
+                    <Box sx={{
+                      backgroundColor: 'rgba(63, 81, 181, 0.1)',
+                      borderRadius: '50%',
+                      width: '60px',
+                      height: '60px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
+                    }}>
+                      <EmotionIcon sx={{ fontSize: '2.5rem', margin: 0 }}>
+                        {emotionToEmoji[detectedEmotion]}
+                      </EmotionIcon>
+                    </Box>
+                    <EmotionTitle variant="h5" sx={{ margin: 0 }}>
+                      {detectedEmotion.charAt(0).toUpperCase() + detectedEmotion.slice(1)}
+                    </EmotionTitle>
+                  </Box>
+                  
+                  <Box sx={{
+                    backgroundColor: 'rgba(63, 81, 181, 0.05)',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    mb: 1
+                  }}>
+                    <EmotionDescription sx={{ mb: 0 }}>
+                      {currentEmotion && `Confidence: ${(currentEmotion.confidence * 100).toFixed(1)}%`}
+                    </EmotionDescription>
+                  </Box>
+                  
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      fontStyle: 'italic', 
+                      color: '#666666',
+                      maxWidth: '80%',
+                      mb: 2,
+                      padding: '12px',
+                      backgroundColor: 'rgba(63, 81, 181, 0.05)',
+                      borderRadius: '8px',
+                      '@media (prefers-color-scheme: dark)': {
+                        color: '#555555',
+                      }
+                    }}
                   >
-                    Confirm Emotion
-                  </Button>
-                )}
-              </Box>
+                    {emotionMessages[detectedEmotion]}
+                  </Typography>
+                  
+                  {showConfirmButton && (
+                    <StyledButton
+                      variant="contained"
+                      onClick={handleConfirmEmotion}
+                      sx={{ 
+                        mt: 1,
+                        backgroundColor: '#3f51b5',
+                        '&:hover': {
+                          backgroundColor: '#303f9f',
+                        }
+                      }}
+                    >
+                      Confirm Emotion
+                    </StyledButton>
+                  )}
+                </Box>
+              </EmotionCard>
             )}
           </EmotionContainer>
           
-          {/* Emotion Statistics - moved here to appear below camera column */}
-          <EmotionStats />
+          {/* Compact Emotion Statistics - Show immediately after emotion detection */}
+          {detectedEmotion && <CompactEmotionStats />}
         </Box>
 
+        {/* Right column - Recommendations */}
         <Box sx={{ flex: 1 }}>
           <EmotionContainer>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -571,23 +815,23 @@ const Dashboard: React.FC = () => {
                 Recommendations
               </EmotionTitle>
               {showEmotionResult && (
-                <Button
+                <StyledButton
                   variant="outlined"
                   onClick={handleRefreshRecommendations}
                   disabled={isLoadingRecommendations}
                   size="small"
                   title="Get a new AI-generated recommendation for the same emotion"
                   sx={{ 
-                    color: 'white',
-                    borderColor: 'white',
+                    color: '#3f51b5',
+                    borderColor: '#3f51b5',
                     '&:hover': {
-                      borderColor: 'white',
-                      backgroundColor: 'rgba(255, 255, 255, 0.1)'
+                      borderColor: '#3f51b5',
+                      backgroundColor: 'rgba(63, 81, 181, 0.1)'
                     }
                   }}
                 >
                   {isLoadingRecommendations ? 'Loading...' : 'Get New AI Suggestion'}
-                </Button>
+                </StyledButton>
               )}
             </Box>
             
@@ -600,7 +844,7 @@ const Dashboard: React.FC = () => {
                 {/* Show AI recommendations first with a label */}
                 {recommendations.filter(rec => rec.isAIGenerated).length > 0 && (
                   <>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, mb: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 1, mb: 1 }}>
                       AI-Generated Recommendations
                     </Typography>
                     {recommendations
@@ -618,7 +862,7 @@ const Dashboard: React.FC = () => {
                 {/* Show curated recommendations with a label */}
                 {recommendations.filter(rec => !rec.isAIGenerated).length > 0 && (
                   <>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 2, mb: 1 }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mt: 1, mb: 1 }}>
                       Curated Recommendations
                     </Typography>
                     {recommendations
@@ -645,7 +889,7 @@ const Dashboard: React.FC = () => {
       </Box>
 
       {/* Add a privacy policy link in the footer */}
-      <Box sx={{ mt: 4, textAlign: 'center', pb: 2 }}>
+      <Box sx={{ mt: 3, textAlign: 'center', pb: 2 }}>
         <Typography variant="body2" color="text.secondary">
           © {new Date().getFullYear()} MoodMirror. All rights reserved.
         </Typography>
