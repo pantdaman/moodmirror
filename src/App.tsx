@@ -5,7 +5,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
 import { getEmotionTheme } from './utils/emotionThemes';
 
 const App: React.FC = () => {
@@ -17,8 +16,7 @@ const App: React.FC = () => {
       <CssBaseline />
       <Router>
         <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/" element={<Dashboard />} />
         </Routes>
       </Router>
     </ThemeProvider>
