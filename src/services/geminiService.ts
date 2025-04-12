@@ -294,4 +294,27 @@ export const listAvailableModels = async (): Promise<void> => {
     console.error('Error fetching available models:', error);
     throw error;
   }
+};
+
+// Get recommendations for a given emotion
+export const getGeminiRecommendations = async (emotion: EmotionType): Promise<Recommendation[]> => {
+  try {
+    console.log('Getting Gemini recommendations for emotion:', emotion);
+    
+    // Create emotion data with full confidence since this is a direct selection
+    const emotionData: EmotionData = {
+      emotion,
+      confidence: 1.0
+    };
+
+    // Generate a recommendation using the existing function
+    const recommendation = await generateRecommendation(emotionData, true);
+    
+    // Return as an array since we might want to add more recommendations in the future
+    return [recommendation];
+  } catch (error) {
+    console.error('Error getting Gemini recommendations:', error);
+    // Return an empty array in case of error
+    return [];
+  }
 }; 

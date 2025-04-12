@@ -3,11 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useEmotionDetection } from '../hooks/useEmotionDetection';
-import { useGeminiRecommendations } from '../hooks/useGeminiRecommendations';
 import { getRecommendationsByEmotion } from '../data/curatedRecommendations';
 import { EmotionType, Recommendation, EmotionData } from '../types';
 import { RecommendationCard } from '../components/RecommendationCard';
-import { Button, Container, Typography, Box, CircularProgress, Paper, Link, Dialog, DialogTitle, DialogContent, DialogActions, Collapse, useMediaQuery, useTheme } from '@mui/material';
+import { Button, Container, Typography, Box, CircularProgress, Paper, Link, Dialog, DialogTitle, DialogContent, DialogActions, Collapse, useMediaQuery, useTheme, Chip } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { saveEmotionStats } from '../services/emotionStatsService';
 import EmotionStats from '../components/EmotionStats';
@@ -15,6 +14,7 @@ import logo from '../assets/images/moodmirror-logo.svg';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import BarChartIcon from '@mui/icons-material/BarChart';
+import { getGeminiRecommendations } from '../services/geminiService';
 
 // Styled components
 const EmotionContainer = styled(Paper)(({ theme }) => ({
@@ -76,6 +76,17 @@ const emotionToEmoji: Record<EmotionType, string> = {
   disgusted: '🤢',
   surprised: '😲',
   neutral: '😐'
+};
+
+// Add emotion colors
+const emotionColors = {
+  happy: '#4CAF50',
+  sad: '#2196F3',
+  angry: '#F44336',
+  fearful: '#9C27B0',
+  disgusted: '#795548',
+  surprised: '#FF9800',
+  neutral: '#9E9E9E'
 };
 
 // Add encouraging messages for each emotion
@@ -281,21 +292,22 @@ const Dashboard: React.FC = () => {
   const [canUseApp, setCanUseApp] = useState(true);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [selectedEmotion, setSelectedEmotion] = useState<EmotionType | null>(null);
+  const [currentEmotion, setCurrentEmotion] = useState<EmotionData | null>(null);
+  const [detectedEmotionState, setDetectedEmotionState] = useState<{ emotion: EmotionType; confidence: number } | null>(null);
 
-  const { currentEmotion, isModelLoaded, isProcessing, error } = useEmotionDetection(
+  const { currentEmotion: detectedCurrentEmotion, isModelLoaded, isProcessing, error } = useEmotionDetection(
     videoRef,
     1000, // Process every second
     isCapturing // Only process when capturing
   );
 
-  const { recommendations: aiRecommendations, isLoading: isLoadingRecommendations, error: recommendationError } = useGeminiRecommendations(emotionData, forceRefresh);
-
   useEffect(() => {
-    if (currentEmotion) {
+    if (detectedCurrentEmotion) {
       // Store the emotion but don't display it yet
-      lastDetectedEmotionRef.current = currentEmotion;
+      lastDetectedEmotionRef.current = detectedCurrentEmotion;
     }
-  }, [currentEmotion]);
+  }, [detectedCurrentEmotion]);
 
   // Check if user can use the app based on time since last use
   useEffect(() => {
@@ -324,6 +336,12 @@ const Dashboard: React.FC = () => {
 
   const handleStartCapture = async () => {
     try {
+      // Check if user has reached the usage limit
+      if (usageCount >= FREE_USAGE_LIMIT) {
+        setShowPremiumDialog(true);
+        return;
+      }
+
       // Reset states
       setDetectedEmotion(null);
       setShowEmotionResult(false);
@@ -396,48 +414,51 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleConfirmEmotion = () => {
-    if (!detectedEmotion) return;
-    
-    // Increment usage count
-    const newUsageCount = usageCount + 1;
-    setUsageCount(newUsageCount);
-    localStorage.setItem(USAGE_COUNT_KEY, newUsageCount.toString());
-    
-    // Update last usage time
-    const now = Date.now();
-    setLastUsageTime(now);
-    localStorage.setItem(LAST_USAGE_TIME_KEY, now.toString());
-    
-    // Check if user has reached the free usage limit
-    if (newUsageCount >= FREE_USAGE_LIMIT) {
-      setShowPremiumDialog(true);
-      setCanUseApp(false);
-    }
-
+  const handleConfirmEmotion = async () => {
     try {
-      // Save emotion data for statistics
-      saveEmotionStats({
-        emotion: detectedEmotion as EmotionType,
-        confidence: 1.0
+      const emotionToSave = selectedEmotion || detectedCurrentEmotion?.emotion;
+      if (!emotionToSave) return;
+
+      // Check if user has reached the usage limit
+      if (usageCount >= FREE_USAGE_LIMIT) {
+        setShowPremiumDialog(true);
+        return;
+      }
+
+      setIsLoading(true);
+
+      // Save the emotion
+      await saveEmotionStats({
+        emotion: emotionToSave as EmotionType,
+        confidence: selectedEmotion ? 1.0 : (detectedCurrentEmotion?.confidence || 0)
       });
 
-      // Set the emotion data for the recommendation engine
-      setEmotionData({
-        emotion: detectedEmotion,
-        confidence: 1.0 // Since this is a confirmed emotion
-      });
+      // Increment usage count
+      const newUsageCount = usageCount + 1;
+      setUsageCount(newUsageCount);
+      localStorage.setItem(USAGE_COUNT_KEY, newUsageCount.toString());
+      localStorage.setItem(LAST_USAGE_TIME_KEY, Date.now().toString());
 
-      // Show emotion result and recommendations
+      // Get new AI recommendations for the selected emotion
+      const newRecommendations = await getGeminiRecommendations(emotionToSave as EmotionType);
+      console.log('New AI recommendations:', newRecommendations);
+      
+      // Get curated recommendations
+      const curatedRecs = getRecommendationsByEmotion(emotionToSave as EmotionType);
+      console.log('Curated recommendations:', curatedRecs);
+      
+      // Update recommendations state with both AI and curated recommendations
+      setRecommendations([...newRecommendations, ...curatedRecs]);
+      console.log('Combined recommendations:', [...newRecommendations, ...curatedRecs]);
+
+      // Reset states
+      setSelectedEmotion(null);
+      setDetectedEmotionState(null);
       setShowEmotionResult(true);
-      setShowRecommendations(true);
-
-      // Get curated recommendations immediately
-      const curatedRecommendations = getRecommendationsByEmotion(detectedEmotion);
-      setRecommendations(curatedRecommendations);
+      setIsLoading(false);
     } catch (error) {
       console.error('Error confirming emotion:', error);
-      alert('Failed to save emotion data. Please try again.');
+      setIsLoading(false);
     }
   };
 
@@ -447,22 +468,6 @@ const Dashboard: React.FC = () => {
     // Navigate to login page
     navigate('/login');
   };
-
-  // Update recommendations when aiRecommendations change
-  useEffect(() => {
-    if (aiRecommendations.length > 0) {
-      console.log('AI recommendations updated:', aiRecommendations);
-      
-      // Get curated recommendations
-      const curatedRecommendations = getRecommendationsByEmotion(detectedEmotion as EmotionType);
-      
-      // Combine recommendations, prioritizing AI-generated ones first
-      const combinedRecommendations = [...aiRecommendations, ...curatedRecommendations];
-      console.log('Combined recommendations:', combinedRecommendations);
-      
-      setRecommendations(combinedRecommendations);
-    }
-  }, [aiRecommendations, detectedEmotion]);
 
   // Add a console log to debug the emotionData state
   useEffect(() => {
@@ -475,8 +480,30 @@ const Dashboard: React.FC = () => {
   }, [recommendations]);
 
   // Add a function to handle refreshing recommendations
-  const handleRefreshRecommendations = () => {
-    setForceRefresh(prev => !prev);
+  const handleRefreshRecommendations = async () => {
+    try {
+      const emotionToRefresh = selectedEmotion || detectedCurrentEmotion?.emotion;
+      if (!emotionToRefresh) return;
+
+      setIsLoading(true);
+
+      // Get new AI recommendations
+      const newRecommendations = await getGeminiRecommendations(emotionToRefresh as EmotionType);
+      console.log('New AI recommendations:', newRecommendations);
+      
+      // Get curated recommendations
+      const curatedRecs = getRecommendationsByEmotion(emotionToRefresh as EmotionType);
+      console.log('Curated recommendations:', curatedRecs);
+      
+      // Update recommendations state
+      setRecommendations([...newRecommendations, ...curatedRecs]);
+      console.log('Combined recommendations:', [...newRecommendations, ...curatedRecs]);
+      
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error refreshing recommendations:', error);
+      setIsLoading(false);
+    }
   };
 
   // Update the usage count indicator to show time remaining
@@ -719,92 +746,93 @@ const Dashboard: React.FC = () => {
               )}
             </Box>
 
-            {detectedEmotion && (
-              <EmotionCard>
-                <Box sx={{ 
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 1
-                }}>
-                  <Box sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: 2,
-                    mb: 1
-                  }}>
-                    <Box sx={{
-                      backgroundColor: 'rgba(63, 81, 181, 0.1)',
-                      borderRadius: '50%',
-                      width: '60px',
-                      height: '60px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)'
-                    }}>
-                      <EmotionIcon sx={{ fontSize: '2.5rem', margin: 0 }}>
-                        {emotionToEmoji[detectedEmotion]}
-                      </EmotionIcon>
-                    </Box>
-                    <EmotionTitle variant="h5" sx={{ margin: 0 }}>
-                      {detectedEmotion.charAt(0).toUpperCase() + detectedEmotion.slice(1)}
-                    </EmotionTitle>
-                  </Box>
-                  
-                  <Box sx={{
-                    backgroundColor: 'rgba(63, 81, 181, 0.05)',
-                    borderRadius: '8px',
-                    padding: '8px 16px',
-                    mb: 1
-                  }}>
-                    <EmotionDescription sx={{ mb: 0 }}>
-                      {currentEmotion && `Confidence: ${(currentEmotion.confidence * 100).toFixed(1)}%`}
-                    </EmotionDescription>
-                  </Box>
-                  
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      fontStyle: 'italic', 
-                      color: '#666666',
-                      maxWidth: '80%',
-                      mb: 2,
-                      padding: '12px',
-                      backgroundColor: 'rgba(63, 81, 181, 0.05)',
-                      borderRadius: '8px',
-                      '@media (prefers-color-scheme: dark)': {
-                        color: '#555555',
-                      }
-                    }}
-                  >
-                    {emotionMessages[detectedEmotion]}
+            {/* Emotion Selection Section */}
+            {detectedCurrentEmotion && !selectedEmotion && (
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom>
+                  Detected Emotion: {emotionToEmoji[detectedCurrentEmotion.emotion as EmotionType]} {detectedCurrentEmotion.emotion}
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    Confidence: {(detectedCurrentEmotion.confidence * 100).toFixed(1)}%
                   </Typography>
-                  
-                  {showConfirmButton && (
-                    <StyledButton
-                      variant="contained"
-                      onClick={handleConfirmEmotion}
-                      sx={{ 
-                        mt: 1,
-                        backgroundColor: '#3f51b5',
+                </Typography>
+                
+                <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                  Is this correct? If not, select your current emotion:
+                </Typography>
+                
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: 1, 
+                  justifyContent: 'center',
+                  mb: 2
+                }}>
+                  {Object.entries(emotionToEmoji).map(([emotion, emoji]) => (
+                    <Chip
+                      key={emotion}
+                      label={`${emoji} ${emotion}`}
+                      onClick={() => setSelectedEmotion(emotion as EmotionType)}
+                      sx={{
+                        backgroundColor: emotionColors[emotion as keyof typeof emotionColors],
+                        color: 'white',
                         '&:hover': {
-                          backgroundColor: '#303f9f',
+                          backgroundColor: `${emotionColors[emotion as keyof typeof emotionColors]}dd`,
+                        },
+                        minWidth: '120px',
+                        height: '40px',
+                        fontSize: '1rem',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease-in-out',
+                        '&:active': {
+                          transform: 'scale(0.95)',
                         }
                       }}
-                    >
-                      Confirm Emotion
-                    </StyledButton>
-                  )}
+                    />
+                  ))}
                 </Box>
-              </EmotionCard>
+                
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleConfirmEmotion()}
+                    disabled={!canUseApp}
+                    sx={{ minWidth: '120px' }}
+                  >
+                    Confirm
+                  </Button>
+                </Box>
+              </Box>
+            )}
+
+            {/* Selected Emotion Confirmation */}
+            {selectedEmotion && (
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Typography variant="h6" gutterBottom>
+                  Selected Emotion: {emotionToEmoji[selectedEmotion]} {selectedEmotion}
+                </Typography>
+                
+                <Typography variant="body1" sx={{ mb: 2, fontStyle: 'italic', color: 'text.secondary' }}>
+                  {emotionMessages[selectedEmotion]}
+                </Typography>
+                
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleConfirmEmotion()}
+                    disabled={!canUseApp}
+                    sx={{ minWidth: '120px' }}
+                  >
+                    Confirm
+                  </Button>
+                </Box>
+              </Box>
             )}
           </EmotionContainer>
           
           {/* Compact Emotion Statistics - Show immediately after emotion detection */}
-          {detectedEmotion && <CompactEmotionStats />}
+          {detectedCurrentEmotion && <CompactEmotionStats />}
         </Box>
 
         {/* Right column - Recommendations */}
@@ -818,7 +846,7 @@ const Dashboard: React.FC = () => {
                 <StyledButton
                   variant="outlined"
                   onClick={handleRefreshRecommendations}
-                  disabled={isLoadingRecommendations}
+                  disabled={isLoading}
                   size="small"
                   title="Get a new AI-generated recommendation for the same emotion"
                   sx={{ 
@@ -830,12 +858,12 @@ const Dashboard: React.FC = () => {
                     }
                   }}
                 >
-                  {isLoadingRecommendations ? 'Loading...' : 'Get New AI Suggestion'}
+                  {isLoading ? 'Loading...' : 'Get New AI Suggestion'}
                 </StyledButton>
               )}
             </Box>
             
-            {isLoading || isLoadingRecommendations ? (
+            {isLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
                 <CircularProgress />
               </Box>
@@ -879,8 +907,8 @@ const Dashboard: React.FC = () => {
               </Box>
             ) : (
               <Typography sx={{ textAlign: 'center' }}>
-                {detectedEmotion 
-                  ? 'Click "Confirm Emotion" to get recommendations' 
+                {selectedEmotion 
+                  ? 'Click "Confirm" to get recommendations' 
                   : 'Detect an emotion to get recommendations'}
               </Typography>
             )}

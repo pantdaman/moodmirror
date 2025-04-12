@@ -1,0 +1,9 @@
+.dashboard-logo {
+  height: 30px;
+  margin-right: 10px;
+}
+
+.dashboard-header .logo-container {
+  display: flex;
+  align-items: center;
+}
